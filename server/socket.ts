@@ -1,81 +1,86 @@
 import { Server } from 'socket.io';
-import { Message, Reaction, TypingStatus, User } from '@/types/chat';
 
 let io: Server;
-const users = new Map<string, User>();
-const typingUsers = new Set<string>();
 
 export const initSocket = (server: any) => {
   io = new Server(server, {
     cors: {
       origin: "*",
       methods: ["GET", "POST"]
+    },
+    pingTimeout: 60000,
+    transports: ['websocket'],
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 2 * 60 * 1000,
     }
   });
 
-  io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
+  const connectedUsers = new Map();
 
-    // Handle user registration
-    socket.on('user:register', (user: User) => {
-      users.set(socket.id, user);
-      io.emit('users:update', Array.from(users.values()));
+  io.on('connection', (socket) => {
+    console.log('A user connected:', socket.id);
+
+    // Join user's personal room
+    socket.on('join_user', (userId: string) => {
+      socket.join(userId);
+      connectedUsers.set(userId, socket.id);
+      console.log(`User ${userId} connected with socket ${socket.id}`);
+      console.log('Connected users:', Array.from(connectedUsers.entries()));
     });
 
-    // Handle messages with reactions
-    socket.on('message', (message: Message) => {
-      const user = users.get(socket.id);
-      io.emit('message', {
+    // Handle new messages
+    socket.on('send_message', (message) => {
+      console.log('New message:', message);
+      
+      // Broadcast to everyone in sender's room (including sender)
+      io.to(message.senderId).emit('new_message', {
         ...message,
-        userName: user?.name || 'Anonymous',
-        reactions: {},
+        received: true
       });
+      
+      // Broadcast to everyone in receiver's room
+      io.to(message.receiverId).emit('new_message', {
+        ...message,
+        received: true
+      });
+
+      // Log delivery status
+      const receiverSocketId = connectedUsers.get(message.receiverId);
+      console.log(`Message delivered to receiver ${message.receiverId} via socket ${receiverSocketId}`);
     });
 
     // Handle typing status
-    socket.on('typing:start', () => {
-      const user = users.get(socket.id);
-      if (user && !typingUsers.has(socket.id)) {
-        typingUsers.add(socket.id);
-        const typingStatus: TypingStatus = {
-          userId: socket.id,
-          userName: user.name,
-          isTyping: true
-        };
-        socket.broadcast.emit('typing:update', typingStatus);
+    socket.on('typing_start', ({ senderId, receiverId }) => {
+      const receiverSocketId = connectedUsers.get(receiverId);
+      if (receiverSocketId) {
+        io.to(receiverId).emit('user_typing', { 
+          userId: senderId, 
+          isTyping: true 
+        });
+        console.log(`Typing indicator sent to ${receiverId}`);
       }
     });
 
-    socket.on('typing:stop', () => {
-      const user = users.get(socket.id);
-      if (user && typingUsers.has(socket.id)) {
-        typingUsers.delete(socket.id);
-        const typingStatus: TypingStatus = {
-          userId: socket.id,
-          userName: user.name,
-          isTyping: false
-        };
-        socket.broadcast.emit('typing:update', typingStatus);
+    socket.on('typing_stop', ({ senderId, receiverId }) => {
+      const receiverSocketId = connectedUsers.get(receiverId);
+      if (receiverSocketId) {
+        io.to(receiverId).emit('user_typing', { 
+          userId: senderId, 
+          isTyping: false 
+        });
       }
-    });
-
-    // Handle reactions
-    socket.on('reaction:add', (reaction: Reaction) => {
-      io.emit('reaction:update', reaction);
-    });
-
-    socket.on('reaction:remove', (reaction: Reaction) => {
-      io.emit('reaction:update', { ...reaction, remove: true });
     });
 
     socket.on('disconnect', () => {
-      const user = users.get(socket.id);
-      if (user) {
-        users.delete(socket.id);
-        typingUsers.delete(socket.id);
-        io.emit('users:update', Array.from(users.values()));
+      // Remove user from connected users
+      for (const [userId, socketId] of connectedUsers.entries()) {
+        if (socketId === socket.id) {
+          connectedUsers.delete(userId);
+          console.log(`User ${userId} disconnected`);
+          break;
+        }
       }
-      console.log('User disconnected:', socket.id);
+      console.log('Connected users after disconnect:', Array.from(connectedUsers.entries()));
     });
   });
 
@@ -83,6 +88,8 @@ export const initSocket = (server: any) => {
 };
 
 export const getIO = () => {
-  if (!io) throw new Error('Socket.io not initialized!');
+  if (!io) {
+    throw new Error('Socket.io not initialized');
+  }
   return io;
 };

@@ -4,80 +4,135 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import * as z from "zod"
+
+const formSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+})
+
+type FormData = z.infer<typeof formSchema>
 
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const form = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  })
+
+  const onSubmit = async (data: FormData) => {
+    setLoading(true);
+
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(data),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        // Store user data in localStorage
-        localStorage.setItem('user', JSON.stringify(data.user));
-        router.push('/friends');
-      } else {
-        const data = await response.json();
-        throw new Error(data.error);
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(responseData.error || 'Invalid credentials');
       }
+
+      // Store user data in localStorage
+      localStorage.setItem('user', JSON.stringify(responseData.user));
+      
+      // Redirect to friends page
+      router.push('/friends');
     } catch (error: any) {
       toast({
         title: 'Error',
         description: error.message,
         variant: 'destructive',
       });
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="container flex items-center justify-center min-h-screen">
-      <Card className="w-[350px]">
+    <div className="flex items-center justify-center min-h-screen bg-slate-50">
+      <Card className="w-[400px] shadow-lg">
         <CardHeader>
-          <h1 className="text-2xl font-bold text-center">Login</h1>
+          <div className="space-y-1 text-center">
+            <h1 className="text-2xl font-bold">Welcome back</h1>
+            <p className="text-sm text-muted-foreground">Enter your credentials to sign in</p>
+          </div>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Input
-                type="email"
-                placeholder="Email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Enter your email" 
+                        {...field} 
+                        type="email"
+                        disabled={loading}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            <div className="space-y-2">
-              <Input
-                type="password"
-                placeholder="Password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Enter your password" 
+                        {...field} 
+                        type="password"
+                        disabled={loading}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            <Button type="submit" className="w-full">Login</Button>
-          </form>
-          <p className="text-center mt-4">
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign in'}
+              </Button>
+            </form>
+          </Form>
+        </CardContent>
+        <CardFooter className="flex justify-center">
+          <p className="text-sm text-muted-foreground">
             Don't have an account?{' '}
-            <Link href="/signup" className="text-blue-500 hover:underline">
-              Sign Up
+            <Link href="/signup" className="text-primary hover:underline font-medium">
+              Sign up
             </Link>
           </p>
-        </CardContent>
+        </CardFooter>
       </Card>
     </div>
   );

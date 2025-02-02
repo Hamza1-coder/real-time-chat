@@ -1,12 +1,13 @@
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { cn } from "@/lib/utils";
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
+import { Toaster } from '@/components/ui/toaster';
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ['latin'] });
 
-export const metadata = {
-  title: "Real-time Chat App",
-  description: "A modern real-time chat application",
+export const metadata: Metadata = {
+  title: 'Real-Time Chat App',
+  description: 'A modern real-time chat application',
 };
 
 export default function RootLayout({
@@ -15,11 +16,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={cn("min-h-screen bg-background antialiased", inter.className)} suppressHydrationWarning>
+    <html lang="en">
+      <body className={inter.className}>
         <main className="relative flex min-h-screen flex-col">
           {children}
         </main>
+        <Toaster />
       </body>
     </html>
   );

@@ -1,19 +1,37 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { Socket } from 'socket.io-client';
-import { TypingStatus } from '@/types/chat';
 
-export const useTyping = (socket: Socket | null) => {
-  const [typingUsers, setTypingUsers] = useState<TypingStatus[]>([]);
-  const typingTimeoutRef = useRef<NodeJS.Timeout>();
+interface TypingUser {
+  userId: string;
+  isTyping: boolean;
+}
+
+interface TypingData {
+  userId: string;
+  friendId: string;
+}
+
+export function useTyping(socket: Socket | null, currentUserId: string | undefined, friendId: string | null) {
+  const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
+
+  const startTyping = useCallback((data: TypingData) => {
+    if (!socket) return;
+    socket.emit('typing:start', data);
+  }, [socket]);
+
+  const stopTyping = useCallback((data: TypingData) => {
+    if (!socket) return;
+    socket.emit('typing:stop', data);
+  }, [socket]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !currentUserId || !friendId) return;
 
-    const handleTypingUpdate = (status: TypingStatus) => {
+    const handleTypingUpdate = (data: TypingUser) => {
       setTypingUsers(prev => {
-        const filtered = prev.filter(user => user.userId !== status.userId);
-        if (status.isTyping) {
-          return [...filtered, status];
+        const filtered = prev.filter(user => user.userId !== data.userId);
+        if (data.isTyping) {
+          return [...filtered, data];
         }
         return filtered;
       });
@@ -24,36 +42,11 @@ export const useTyping = (socket: Socket | null) => {
     return () => {
       socket.off('typing:update', handleTypingUpdate);
     };
-  }, [socket]);
-
-  const startTyping = () => {
-    if (!socket) return;
-
-    socket.emit('typing:start');
-
-    // Clear existing timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    // Set new timeout
-    typingTimeoutRef.current = setTimeout(() => {
-      socket.emit('typing:stop');
-    }, 2000);
-  };
-
-  const stopTyping = () => {
-    if (!socket) return;
-    
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-    socket.emit('typing:stop');
-  };
+  }, [socket, currentUserId, friendId]);
 
   return {
     typingUsers,
     startTyping,
     stopTyping
   };
-};
+}

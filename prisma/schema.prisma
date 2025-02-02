@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,7 +11,7 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
+  id            String    @id @default(cuid())
   username      String    @unique
   email         String    @unique
   password      String
@@ -16,26 +19,95 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  sentFriendRequests     FriendRequest[] @relation("SentFriendRequests")
+  receivedFriendRequests FriendRequest[] @relation("ReceivedFriendRequests")
+
+  sentMessages     Message[] @relation("UserSentMessages")
+  receivedMessages Message[] @relation("UserReceivedMessages")
+
+  friends    User[] @relation("UserFriends")
+  friendsOf  User[] @relation("UserFriends")
+
+  @@index([email])
+  @@index([username])
+}
+
+model FriendRequest {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  status     String   @default("pending") // pending, accepted, rejected
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  sender   User @relation("SentFriendRequests", fields: [senderId], references: [id])
+  receiver User @relation("ReceivedFriendRequests", fields: [receiverId], references: [id])
+
+  @@unique([senderId, receiverId])
+  @@index([senderId])
+  @@index([receiverId])
+}
+
+model Message {
+  id         String   @id @default(cuid())
+  content    String
+  senderId   String
+  receiverId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  sender   User @relation("UserSentMessages", fields: [senderId], references: [id])
+  receiver User @relation("UserReceivedMessages", fields: [receiverId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  email         String    @unique
+  password      String
+  profileImage  String?   @default("https://github.com/shadcn.png")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
   // Friend relationships
   sentRequests     FriendRequest[] @relation("SentRequests")
   receivedRequests FriendRequest[] @relation("ReceivedRequests")
+  friends          User[]          @relation("UserFriends")
+  friendsOf        User[]          @relation("UserFriends")
   
   // Group relationships
   groupsOwned      Group[]    @relation("GroupOwner")
   memberships      GroupMember[]
   messages         Message[]
+  
+  // Chat message relationships
+  sentMessages     ChatMessage[]   @relation("SentMessages")
+  receivedMessages ChatMessage[]   @relation("ReceivedMessages")
 }
 
 model FriendRequest {
   id          String    @id @default(uuid())
-  senderId    String
-  receiverId  String
   status      String    @default("PENDING") // PENDING, ACCEPTED, REJECTED
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  // Relations
+  senderId    String
   sender      User      @relation("SentRequests", fields: [senderId], references: [id])
+  receiverId  String
   receiver    User      @relation("ReceivedRequests", fields: [receiverId], references: [id])
+
+  @@unique([senderId, receiverId])
 }
 
 model Group {
@@ -86,4 +158,15 @@ model ReadReceipt {
   message   Message   @relation(fields: [messageId], references: [id])
 
   @@unique([messageId, userId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  content   String
+  senderId  String
+  receiverId String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  sender    User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver  User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
 }
